@@ -28,8 +28,8 @@ export default [
   {
     url: '/user/login',
     type: 'post',
-    response: res => {
-      const { username } = res.body
+    response: config => {
+      const { username } = config.body
       const token = tokens[username]
 
       // mock error
@@ -51,8 +51,8 @@ export default [
   {
     url: '/user/info\.*',
     type: 'get',
-    response: res => {
-      const { token } = res.query
+    response: config => {
+      const { token } = config.query
       const info = users[token]
 
       // mock error

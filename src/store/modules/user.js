@@ -1,6 +1,7 @@
-import { login, logout, getInfo } from '@/api/user'
+import { login, logout, getInfo, getUsers } from '@/api/user'
 import { getToken, setToken, removeToken } from '@/utils/auth'
 import { resetRouter } from '@/router'
+import store from '@/store'
 
 const state = {
   token: getToken(),
@@ -39,18 +40,14 @@ const mutations = {
 
 const actions = {
   // user login
-  login({ commit }, userInfo) {
-    const { username, password } = userInfo
+  login({ commit }, result) {
     return new Promise((resolve, reject) => {
-      login({ username: username.trim(), password: password }).then(response => {
-        const { result } = response
-        commit('SET_TOKEN', result.token)
-        setToken(result.token)
-
-        resolve()
-      }).catch(error => {
-        reject(error)
-      })
+      commit('SET_TOKEN', result.token)
+      setToken(result.token)
+      resolve()
+        .catch(error => {
+          reject(error)
+        })
     })
   },
 
@@ -77,20 +74,19 @@ const actions = {
   },
 
   // user logout
-  logout({ commit, state }) {
+  logout({ commit }) {
     return new Promise((resolve, reject) => {
-      logout(state.token).then(() => {
-        commit('SET_TOKEN', '')
-        commit('SET_IS_SUPPER', '')
-        commit('SET_NICKNAME', '')
-        commit('SET_AVATAR', '')
-        commit('SET_PERMISSIONS', [])
-        removeToken()
-        resetRouter()
-        resolve()
-      }).catch(error => {
-        reject(error)
-      })
+      commit('SET_TOKEN', '')
+      commit('SET_IS_SUPPER', '')
+      commit('SET_NICKNAME', '')
+      commit('SET_AVATAR', '')
+      commit('SET_PERMISSIONS', [])
+      removeToken()
+      resetRouter()
+      resolve()
+        .catch(error => {
+          reject(error)
+        })
     })
   },
   // remove token

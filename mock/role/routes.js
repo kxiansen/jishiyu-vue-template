@@ -186,7 +186,7 @@ export const asyncRoutes = [
       },
       {
         path: 'mixin',
-        component: 'views/components-demo/mixi',
+        component: 'views/components-demo/mixin',
         name: 'ComponentMixinDemo',
         meta: { title: 'componentMixin' }
       },

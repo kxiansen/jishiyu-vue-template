@@ -1,271 +1,387 @@
 <template>
   <div class="app-container">
-    <el-button type="primary" @click="handleAddRole">
-      {{ $t('permission.addRole') }}
-    </el-button>
+    <el-row>
+      <el-col :span="16">
+        <el-form :inline="true"
+                 :model="filters">
+          <el-form-item>
+            <el-input v-model="filters.name"
+                      placeholder="姓名" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary"
+                       icon="search"
+                       @click="name_Search()">{{ $t('accountManage.search') }} </el-button>
+          </el-form-item>
+        </el-form>
+      </el-col>
+      <el-col :span="8"
+              style="text-align: right">
+        <el-button @click="refresh()">{{$t('accountManage.flush')}}</el-button>
+        <el-button v-if="has_permission('account_user_add')"
+                   style="float: right"
+                   type="primary"
+                   @click="handleAdd()">{{$t('accountManage.addUser')}}
+        </el-button>
+      </el-col>
+    </el-row>
 
-    <el-table :data="rolesList" style="width: 100%;margin-top:30px;" border>
-      <el-table-column align="center" label="Role Key" width="220">
+    <el-table v-loading="listLoading"
+              :data="tableData.data"
+              stripe
+              border
+              style="width: 100%"
+              :default-sort="{prop: 'username', order: 'descending'}">
+      <el-table-column type="index"
+                       width="60" />
+      <el-table-column prop="username"
+                       label="Login Name"
+                       sortable />
+      <el-table-column prop="nickname"
+                       label="Full Name"
+                       sortable />
+      <el-table-column prop="role_name"
+                       label="Role" />
+      <el-table-column prop="last_login"
+                       label="Recently the login" />
+      <el-table-column label="State"
+                       sortable
+                       width="90">
         <template slot-scope="scope">
-          {{ scope.row.key }}
+          <el-tag v-if="scope.row.is_active"
+                  type="success">{{$t('accountManage.normal')}}</el-tag>
+          <el-tag v-else
+                  type="danger">{{$t('accountManage.disable')}}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column align="center" label="Role Name" width="220">
+      <el-table-column v-if="has_permission('account_user_edit|account_user_disable')"
+                       label="Operation"
+                       width="250">
         <template slot-scope="scope">
-          {{ scope.row.name }}
-        </template>
-      </el-table-column>
-      <el-table-column align="header-center" label="Description">
-        <template slot-scope="scope">
-          {{ scope.row.description }}
-        </template>
-      </el-table-column>
-      <el-table-column align="center" label="Operations">
-        <template slot-scope="scope">
-          <el-button type="primary" size="small" @click="handleEdit(scope)">
-            {{ $t('permission.editPermission') }}
+          <el-button v-if="has_permission('account_user_edit')"
+                     size="small"
+                     @click="handleEdit(scope.$index, scope.row)">{{$t('accountManage.edit')}}</el-button>
+          <el-button v-if="has_permission('account_user_disable') && scope.row.is_active"
+                     size="small"
+                     type="danger"
+                     :loading="btnDelLoading[scope.row.id]"
+                     @click="handleDisable(scope.$index, scope.row)">{{$t('accountManage.disable')}}
           </el-button>
-          <el-button type="danger" size="small" @click="handleDelete(scope)">
-            {{ $t('permission.delete') }}
+          <el-button v-if="has_permission('account_user_disable') && scope.row.is_active != 1"
+                     size="small"
+                     type="success"
+                     :loading="btnDelLoading[scope.row.id]"
+                     @click="handleDisable(scope.$index, scope.row)">{{$t('accountManage.enable')}}
+          </el-button>
+          <el-button v-if="has_permission('account_user_disable')"
+                     size="small"
+                     type="warning"
+                     @click="RestPwd(scope.$index, scope.row)">{{$t('accountManage.resetPassword')}}
           </el-button>
         </template>
       </el-table-column>
     </el-table>
 
-    <el-dialog :visible.sync="dialogVisible" :title="dialogType==='edit'?'Edit Role':'New Role'">
-      <el-form :model="role" label-width="80px" label-position="left">
-        <el-form-item label="Name">
-          <el-input v-model="role.name" placeholder="Role Name" />
+    <!--分页-->
+    <div v-if="tableData.total > 10"
+         class="pagination-bar">
+      <el-pagination :current-page="currentPage"
+                     layout="total, prev, pager, next"
+                     :total="tableData.total"
+                     @current-change="handleCurrentChange" />
+    </div>
+
+    <!--编辑新增界面-->
+    <el-dialog :title="editFormTitle"
+               :visible.sync="dialogShow"
+               :close-on-click-modal="false">
+      <el-form ref="editForm"
+               :model="editForm"
+               :rules="rules"
+               label-width="80px">
+        <el-form-item prop="username"
+                      label="登录名">
+          <el-input v-model="editForm.username"
+                    auto-complete="off"
+                    :disabled="is_disabled" />
         </el-form-item>
-        <el-form-item label="Desc">
-          <el-input
-            v-model="role.description"
-            :autosize="{ minRows: 2, maxRows: 4}"
-            type="textarea"
-            placeholder="Role Description"
-          />
+        <el-form-item prop="nickname"
+                      label="姓名">
+          <el-input v-model="editForm.nickname"
+                    auto-complete="off" />
         </el-form-item>
-        <el-form-item label="Menus">
-          <el-tree ref="tree" :check-strictly="checkStrictly" :data="routesData" :props="defaultProps" show-checkbox node-key="path" class="permission-tree" />
+        <el-form-item prop="password"
+                      label="密码"
+                      :style="display">
+          <el-input v-model="editForm.password"
+                    type="password"
+                    auto-complete="off" />
         </el-form-item>
+        <el-form-item prop="checkPass"
+                      label="确认密码"
+                      :style="display"
+                      width="180">
+          <el-input v-model="editForm.checkPass"
+                    type="password"
+                    auto-complete="off" />
+        </el-form-item>
+        <el-form-item label="角色"
+                      required>
+          <el-select v-model="editForm.role_id"
+                     placeholder="请选择用户角色">
+            <el-option v-for="role in roles"
+                       :key="role.id"
+                       :label="role.name"
+                       :value="role.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item prop="email"
+                      label="邮箱">
+          <el-input v-model="editForm.email"
+                    auto-complete="off" />
+        </el-form-item>
+        <el-form-item prop="mobile"
+                      label="电话"
+                      required>
+          <el-input v-model="editForm.mobile"
+                    auto-complete="off" />
+        </el-form-item>
+        <el-alert v-if="error"
+                  :title="error"
+                  type="error"
+                  style="margin-top: -10px; margin-bottom: 10px"
+                  show-icon />
       </el-form>
-      <div style="text-align:right;">
-        <el-button type="danger" @click="dialogVisible=false">
-          {{ $t('permission.cancel') }}
-        </el-button>
-        <el-button type="primary" @click="confirmRole">
-          {{ $t('permission.confirm') }}
-        </el-button>
+      <div slot="footer">
+        <el-button type="text"
+                   @click.native="dialogShow = false">取消</el-button>
+        <el-button type="primary"
+                   :loading="editLoading"
+                   @click.native="editSubmit">保存</el-button>
       </div>
     </el-dialog>
   </div>
 </template>
 
 <script>
-import path from 'path'
-import { deepClone } from '@/utils'
-import { getRoutes, getRoles, addRole, deleteRole, updateRole } from '@/api/role'
-import i18n from '@/lang'
-
-const defaultRole = {
-  key: '',
-  name: '',
-  description: '',
-  routes: []
-}
-
 export default {
-  data() {
+  data () {
+    const validatePass = (rule, value, callback) => {
+      if (value === '') {
+        callback(new Error('请输入密码'))
+      } else {
+        if (this.editForm.checkPass !== '') {
+          this.$refs.editForm.validateField('checkPass')
+        }
+        callback()
+      }
+    }
+
+    const validatePass2 = (rule, value, callback) => {
+      if (value === '') {
+        callback(new Error('请再次输入密码'))
+      } else if (value !== this.editForm.password) {
+        callback(new Error('两次输入密码不一致!'))
+      } else {
+        callback()
+      }
+    }
+
+    const checkMobile = (rule, value, callback) => {
+      if (value === '') {
+        return callback(new Error('手机号不能为空'))
+      }
+      setTimeout(() => {
+        const mobile = /^1[34578]\d{9}$/
+        if (!mobile.test(value)) {
+          callback(new Error('手机号不正确'))
+        } else {
+          callback()
+        }
+      }, 1000)
+    }
+
     return {
-      role: Object.assign({}, defaultRole),
-      routes: [],
-      rolesList: [],
-      dialogVisible: false,
-      dialogType: 'new',
-      checkStrictly: false,
-      defaultProps: {
-        children: 'children',
-        label: 'title'
+      filters: {
+        name: ''
+      },
+      error: '',
+      dialogShow: false,
+      tableData: {},
+      roles: undefined,
+      roles_map: {},
+      display: '',
+      listLoading: false,
+      btnDelLoading: {},
+      editFormTitle: '',
+      editLoading: false,
+      is_disabled: '',
+      currentPage: 1,
+      addForm: {
+        id: 0,
+        username: '',
+        nickname: '',
+        password: '',
+        checkPass: '',
+        role_id: '',
+        email: '',
+        mobile: ''
+      },
+      editForm: {},
+      rules: {
+        username: [
+          { required: true, message: '请输入登录名', trigger: 'blur' }
+        ],
+        nickname: [
+          { required: true, message: '请输入姓名', trigger: 'blur' }
+        ],
+        mobile: [
+          { validator: checkMobile, trigger: 'blur' }
+        ],
+        email: [
+          { required: true, message: '请输入邮箱地址', trigger: 'blur' },
+          { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur,change' }
+        ],
+        password: [
+          { validator: validatePass, trigger: 'blur' }
+        ],
+        checkPass: [
+          { validator: validatePass2, trigger: 'blur' }
+        ]
       }
     }
   },
-  computed: {
-    routesData() {
-      return this.routes
-    }
-  },
-  created() {
-    // Mock: get all routes and roles list from server
-    this.getRoutes()
-    this.getRoles()
+  mounted () {
+    this.getUsers(1, function (that) {
+      that.$http.get('/api/account/roles/').then(res => {
+        that.roles = res.result
+        that.roles.forEach(item => that.roles_map[item.id] = item)
+        that.updateRoleName(that)
+      }, res => that.$layer_message(res.result))
+    })
   },
   methods: {
-    async getRoutes() {
-      const res = await getRoutes()
-      this.serviceRoutes = res.data
-      const routes = this.generateRoutes(res.data)
-      this.routes = this.i18n(routes)
+    handleCurrentChange (val) {
+      this.currentPage = val
+      this.getUsers(this.currentPage)
     },
-    async getRoles() {
-      const res = await getRoles()
-      this.rolesList = res.data
+
+    // 名字查询
+    name_Search () {
+      this.currentPage = 1
+      this.getUsers()
     },
-    i18n(routes) {
-      const app = routes.map(route => {
-        route.title = i18n.t(`route.${route.title}`)
-        if (route.children) {
-          route.children = this.i18n(route.children)
+
+    // 刷新操作
+    refresh () {
+      this.getUsers(this.currentPage)
+    },
+
+    // 获取用户列表
+    getUsers (page, callback) {
+      if (!page) page = 1
+      if (!callback) callback = this.updateRoleName
+      this.listLoading = true
+      this.$http.get('/api/account/users/', {
+        params: {
+          page: page,
+          name: this.filters.name
         }
-        return route
-      })
-      return app
+      }).then((response) => {
+        this.tableData = response.result
+        if (callback) callback(this)
+      }, (response) => this.$layer_message(response.result)).finally(() => this.listLoading = false)
     },
-    // Reshape the routes structure so that it looks the same as the sidebar
-    generateRoutes(routes, basePath = '/') {
-      const res = []
 
-      for (let route of routes) {
-        // skip some route
-        if (route.hidden) { continue }
-
-        const onlyOneShowingChild = this.onlyOneShowingChild(route.children, route)
-
-        if (route.children && onlyOneShowingChild && !route.alwaysShow) {
-          route = onlyOneShowingChild
-        }
-
-        const data = {
-          path: path.resolve(basePath, route.path),
-          title: route.meta && route.meta.title
-
-        }
-
-        // recursive child routes
-        if (route.children) {
-          data.children = this.generateRoutes(route.children, data.path)
-        }
-        res.push(data)
-      }
-      return res
-    },
-    generateArr(routes) {
-      let data = []
-      routes.forEach(route => {
-        data.push(route)
-        if (route.children) {
-          const temp = this.generateArr(route.children)
-          if (temp.length > 0) {
-            data = [...data, ...temp]
-          }
-        }
-      })
-      return data
-    },
-    handleAddRole() {
-      this.role = Object.assign({}, defaultRole)
-      if (this.$refs.tree) {
-        this.$refs.tree.setCheckedNodes([])
-      }
-      this.dialogType = 'new'
-      this.dialogVisible = true
-    },
-    handleEdit(scope) {
-      this.dialogType = 'edit'
-      this.dialogVisible = true
-      this.checkStrictly = true
-      this.role = deepClone(scope.row)
-      this.$nextTick(() => {
-        const routes = this.generateRoutes(this.role.routes)
-        this.$refs.tree.setCheckedNodes(this.generateArr(routes))
-        // set checked state of a node not affects its father and child nodes
-        this.checkStrictly = false
-      })
-    },
-    handleDelete({ $index, row }) {
-      this.$confirm('Confirm to remove the role?', 'Warning', {
-        confirmButtonText: 'Confirm',
-        cancelButtonText: 'Cancel',
-        type: 'warning'
-      })
-        .then(async() => {
-          await deleteRole(row.key)
-          this.rolesList.splice($index, 1)
-          this.$message({
-            type: 'success',
-            message: 'Delete succed!'
-          })
-        })
-        .catch(err => { console.error(err) })
-    },
-    generateTree(routes, basePath = '/', checkedKeys) {
-      const res = []
-
-      for (const route of routes) {
-        const routePath = path.resolve(basePath, route.path)
-
-        // recursive child routes
-        if (route.children) {
-          route.children = this.generateTree(route.children, routePath, checkedKeys)
-        }
-
-        if (checkedKeys.includes(routePath) || (route.children && route.children.length >= 1)) {
-          res.push(route)
+    // 更新角色名称
+    updateRoleName (that) {
+      for (const user of that.tableData.data) {
+        if (that.roles_map.hasOwnProperty(user.role_id)) {
+          that.$set(user, 'role_name', that.roles_map[user.role_id]['name'])
         }
       }
-      return res
     },
-    async confirmRole() {
-      const isEdit = this.dialogType === 'edit'
 
-      const checkedKeys = this.$refs.tree.getCheckedKeys()
-      this.role.routes = this.generateTree(deepClone(this.serviceRoutes), '/', checkedKeys)
+    // 显示添加界面
+    handleAdd: function () {
+      this.is_disabled = false
+      this.dialogShow = true
+      this.editFormTitle = '添加用户'
+      this.display = 'display:block'
+      this.editForm = this.addForm
+    },
 
-      if (isEdit) {
-        await updateRole(this.role.key, this.role)
-        for (let index = 0; index < this.rolesList.length; index++) {
-          if (this.rolesList[index].key === this.role.key) {
-            this.rolesList.splice(index, 1, Object.assign({}, this.role))
-            break
-          }
-        }
+    // 显示编辑界面
+    handleEdit: function (index, row) {
+      this.is_disabled = true
+      this.dialogShow = true
+      this.editFormTitle = '编辑用户'
+      this.display = 'display:none'
+      // this.editForm = Object.assign({}, row);
+      this.editForm = this.$deepCopy(row)
+    },
+
+    // 禁/启 用用户
+    handleDisable: function (index, row) {
+      if (row.is_active) {
+        var res = '禁用'
       } else {
-        const { data } = await addRole(this.role)
-        this.role.key = data.key
-        this.rolesList.push(this.role)
+        var res = '启用'
       }
-
-      const { description, key, name } = this.role
-      this.dialogVisible = false
-      this.$notify({
-        title: 'Success',
-        dangerouslyUseHTMLString: true,
-        message: `
-            <div>Role Key: ${key}</div>
-            <div>Role Nmae: ${name}</div>
-            <div>Description: ${description}</div>
-          `,
-        type: 'success'
+      this.$confirm('确认' + res + '吗?', '警告', {
+        type: 'warning'
+      }).then(() => {
+        this.btnDelLoading = { [row.id]: true }
+        this.editForm = row
+        this.editForm.is_active = !row.is_active
+        this.EditData(row, res + '成功', '')
+      }).catch(() => {
       })
     },
-    // reference: src/view/layout/components/Sidebar/SidebarItem.vue
-    onlyOneShowingChild(children = [], parent) {
-      let onlyOneChild = null
-      const showingChildren = children.filter(item => !item.hidden)
 
-      // When there is only one child route, the child route is displayed by default
-      if (showingChildren.length === 1) {
-        onlyOneChild = showingChildren[0]
-        onlyOneChild.path = path.resolve(parent.path, onlyOneChild.path)
-        return onlyOneChild
-      }
+    // 重置密码
+    RestPwd: function (index, row) {
+      this.$confirm('确认重置该账户密码吗?', '提示', {
+        type: 'warning'
+      }).then(() => {
+        this.listLoading = true
+        this.editForm = row
+        this.editForm.password = 'Password'
+        this.EditData(row, '默认密码: ', 'Password')
+      }).catch(() => {
+      })
+    },
 
-      // Show parent if there are no child route to display
-      if (showingChildren.length === 0) {
-        onlyOneChild = { ... parent, path: '', noShowingChildren: true }
-        return onlyOneChild
-      }
+    EditData: function (row, msg, pwd) {
+      this.$http.put(`/api/account/users/${row.id}`, this.editForm).then(response => {
+        this.listLoading = false
+        this.$layer_message(msg + pwd, 'success')
+        this.getUsers(this.currentPage)
+      }, response => this.$layer_message(response.result)).finally(() => this.btnDelLoading = {})
+    },
 
-      return false
+    editSubmit: function () {
+      this.$refs.editForm.validate((valid) => {
+        if (valid) {
+          this.editLoading = true
+          this.error = ''
+          if (this.editForm.id) {
+            this.$http.put(`/api/account/users/${this.editForm.id}`, this.editForm).then(this.resp,
+              response => this.$layer_message(response.result)).finally(() => this.editLoading = false)
+          } else {
+            this.$http.post('/api/account/users/', this.editForm).then(this.resp,
+              response => this.$layer_message(response.result)).finally(() => this.editLoading = false)
+          }
+        }
+      })
+    },
+    resp: function (response) {
+      this.editLoading = false
+      this.$layer_message('提交成功', 'success')
+      this.editForm = {}
+      this.addForm = { role_id: '' }
+      this.dialogShow = false
+      this.getUsers(this.currentPage)
     }
   }
 }

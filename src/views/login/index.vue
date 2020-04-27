@@ -41,7 +41,10 @@
           auto-complete="on"
           @keyup.enter.native="handleLogin"
         />
-        <span class="show-pwd" @click="showPwd">
+        <span
+          class="show-pwd"
+          @click="showPwd"
+        >
           <svg-icon :icon-class="passwordType === 'password' ? 'eye' : 'eye-open'" />
         </span>
       </el-form-item>
@@ -60,7 +63,7 @@
         </div>
         <div class="tips">
           <span style="margin-right:18px;" />
-          <span/>
+          <span />
         </div>
 
         <el-button
@@ -71,7 +74,10 @@
       </div>
     </el-form>
 
-    <el-dialog :title="$t('login.thirdparty')" :visible.sync="showDialog">
+    <el-dialog
+      :title="$t('login.thirdparty')"
+      :visible.sync="showDialog"
+    >
       {{ $t('login.thirdpartyTips') }}
       <br>
       <br>
@@ -84,6 +90,7 @@
 <script>
 import LangSelect from '@/components/LangSelect'
 import SocialSign from './socialsignin'
+import { setToken } from '@/utils/auth'
 
 export default {
   name: 'Login',
@@ -144,15 +151,14 @@ export default {
       this.$refs.loginForm.validate(valid => {
         if (valid) {
           this.loading = true
-          this.$store
-            .dispatch('user/login', this.loginForm)
-            .then(() => {
+          this.$http.post('/api/account/users/login/', this.loginForm)
+            .then(res => {
+              this.$store.dispatch('user/login', res.result)
               this.$router.push({ path: this.redirect || '/' })
-              this.loading = false
-            })
-            .catch(() => {
-              this.loading = false
-            })
+            }, response => {
+              console.log(response.result)
+            }
+            ).finally(() => this.loading = false)
         } else {
           console.log('error submit!!')
           return false

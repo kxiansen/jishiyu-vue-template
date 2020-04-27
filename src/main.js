@@ -16,9 +16,9 @@ import router from './router'
 import i18n from './lang' // Internationalization
 import './icons' // icon
 import './permission' // permission control
-import GlobalTools from './globalTools'
 
 import './utils/errorLog' // error log
+import globaltools from './utils/globalTools' //global Tools
 
 import * as filters from './filters' // global filters
 
@@ -27,10 +27,12 @@ import { mockXHR } from '../mock' // simulation data
 // mock api in github pages site build
 if (process.env.NODE_ENV === 'production') { mockXHR() }
 
-Vue.use(Element, GlobalTools, {
+Vue.use(Element, {
   size: Cookies.get('size') || 'medium', // set element-ui default size
   i18n: (key, value) => i18n.t(key, value)
 })
+
+Vue.use(globaltools, router)
 
 // register global utility filters.
 Object.keys(filters).forEach(key => {
